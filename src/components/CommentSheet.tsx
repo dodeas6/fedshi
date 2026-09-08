@@ -1,0 +1,135 @@
+import { useEffect, useState, useRef, FormEvent } from 'react'
+import { X, Send } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import type { Comment } from '../lib/types'
+
+interface Props {
+  videoId: string
+  onClose: () => void
+}
+
+export default function CommentSheet({ videoId, onClose }: Props) {
+  const { user } = useAuth()
+  const [comments, setComments] = useState<Comment[]>([])
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    loadComments()
+  }, [videoId])
+
+  const loadComments = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('comments')
+      .select('*, profiles!comments_user_id_fkey(*)')
+      .eq('video_id', videoId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setComments((data as Comment[]) || [])
+    setLoading(false)
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!text.trim() || !user) return
+    const { data } = await supabase
+      .from('comments')
+      .insert({ user_id: user.id, video_id: videoId, text: text.trim() })
+      .select('*, profiles!comments_user_id_fkey(*)')
+      .single()
+    if (data) {
+      setComments(prev => [data as Comment, ...prev])
+      setText('')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    await supabase.from('comments').delete().eq('id', id)
+    setComments(prev => prev.filter(c => c.id !== id))
+  }
+
+  const formatTime = (date: string) => {
+    const diff = Date.now() - new Date(date).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'الآن'
+    if (mins < 60) return `قبل ${mins} دقيقة`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `قبل ${hours} ساعة`
+    const days = Math.floor(hours / 24)
+    return `قبل ${days} يوم`
+  }
+
+  return (
+    <>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <div className="absolute bottom-0 left-0 right-0 z-[61] bg-slate-900 rounded-t-3xl flex flex-col max-h-[65vh] animate-slideUp" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-4 border-b border-slate-800">
+          <h3 className="font-black text-sm text-slate-200">
+            {comments.length} تعليق
+          </h3>
+          <button onClick={onClose} className="text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div ref={listRef} className="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4">
+          {loading ? (
+            <div className="text-center text-slate-500 text-xs py-8">جارٍ التحميل...</div>
+          ) : comments.length === 0 ? (
+            <div className="text-center text-slate-500 text-xs py-8">لا توجد تعليقات بعد. كن أول من يعلّق!</div>
+          ) : (
+            comments.map(c => {
+              const avatar = c.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${c.profiles?.username || 'U'}`
+              return (
+                <div key={c.id} className="flex gap-3 items-start group">
+                  <img src={avatar} alt="" className="w-8 h-8 rounded-full bg-slate-800 object-cover flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <b className="text-slate-300 text-xs">@{c.profiles?.username}</b>
+                      <span className="text-[10px] text-slate-600">{formatTime(c.created_at)}</span>
+                    </div>
+                    <p className="text-slate-100 text-sm mt-0.5 break-words">{c.text}</p>
+                  </div>
+                  {user?.id === c.user_id && (
+                    <button
+                      onClick={() => handleDelete(c.id)}
+                      className="text-slate-600 hover:text-brand-500 text-[10px] opacity-0 group-hover:opacity-100 transition"
+                    >
+                      حذف
+                    </button>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {user ? (
+          <form onSubmit={handleSubmit} className="p-3 border-t border-slate-800 flex gap-2">
+            <input
+              type="text"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="أضف تعليقاً لطيفاً..."
+              className="flex-1 bg-slate-800 border border-slate-700 focus:border-brand-500 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none transition"
+            />
+            <button
+              type="submit"
+              disabled={!text.trim()}
+              className="bg-brand-600 hover:bg-brand-500 disabled:opacity-30 px-4 py-2.5 rounded-xl transition"
+            >
+              <Send className="w-4 h-4 text-white" />
+            </button>
+          </form>
+        ) : (
+          <div className="p-3 border-t border-slate-800 text-center">
+            <p className="text-xs text-slate-500">سجّل دخولك للتعليق</p>
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
