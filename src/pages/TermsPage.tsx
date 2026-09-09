@@ -7,7 +7,10 @@ export default function TermsPage() {
   return (
     <div className="min-h-screen bg-black text-white pb-16">
       <div className="max-w-2xl mx-auto p-5 space-y-6">
-        <button onClick={() => navigate(-1)} className="text-slate-400 flex items-center gap-1 text-xs font-bold">
+        <button
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/auth'))}
+          className="text-slate-400 flex items-center gap-1 text-xs font-bold"
+        >
           <ArrowRight className="w-4 h-4" /> رجوع
         </button>
 
