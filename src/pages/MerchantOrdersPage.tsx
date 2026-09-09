@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Clock, Truck, CheckCircle2, XCircle, TrendingUp } from 'lucide-react'
+import { Package, Clock, Truck, CheckCircle2, XCircle, TrendingUp, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Order } from '../lib/types'
@@ -42,6 +42,22 @@ export default function MerchantOrdersPage() {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: status as Order['status'] } : o))
   }
 
+  const [actionError, setActionError] = useState('')
+
+  const messageBuyer = async (buyerId: string) => {
+    setActionError('')
+    const { data, error } = await supabase.rpc('get_or_create_conversation', { other_user: buyerId })
+    if (error) {
+      setActionError(
+        error.message?.includes('نفسك')
+          ? 'هذا حسابك أنت — لا يمكنك مراسلة نفسك (هذا طلب اختبار من نفس حسابك)'
+          : 'تعذّر فتح المحادثة، حاول مرة أخرى'
+      )
+      return
+    }
+    if (data) navigate(`/inbox/${data}`)
+  }
+
   const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
   const totalRevenue = orders.filter(o => o.status === 'delivered').reduce((sum, o) => sum + o.total_price, 0)
   const pendingCount = orders.filter(o => o.status === 'pending').length
@@ -60,6 +76,12 @@ export default function MerchantOrdersPage() {
             الطلبات والمبيعات
           </h1>
         </div>
+
+        {actionError && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-4 rounded-xl text-center">
+            {actionError}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -114,7 +136,26 @@ export default function MerchantOrdersPage() {
                     <p><b className="text-slate-400">الزبون:</b> {order.buyer_name}</p>
                     <p><b className="text-slate-400">الهاتف:</b> {order.phone}</p>
                     <p><b className="text-slate-400">العنوان:</b> {order.address}</p>
+                    {order.shared_location && (
+                      <a
+                        href={`https://www.google.com/maps?q=${order.shared_location}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-400 underline block"
+                      >
+                        📍 عرض الموقع الدقيق الذي شاركه الزبون
+                      </a>
+                    )}
                   </div>
+
+                  {order.buyer_id && (
+                    <button
+                      onClick={() => messageBuyer(order.buyer_id!)}
+                      className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" /> راسل الزبون
+                    </button>
+                  )}
 
                   <div className="flex gap-2">
                     {order.status === 'pending' && (

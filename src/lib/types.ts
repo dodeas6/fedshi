@@ -8,7 +8,6 @@ export interface Profile {
   is_verified: boolean
   is_private: boolean
   is_banned: boolean
-  ban_reason: string
   coins: number
   created_at: string
 }
@@ -27,9 +26,24 @@ export interface Video {
   likes_count: number
   comments_count: number
   sound_name: string
-  sizes: string[]
-  colors: string[]
+  moderation_note: string
+  category: string
+  video_type: 'reel' | 'product'
+  is_trending: boolean
+  avg_rating: number
+  reviews_count: number
   created_at: string
+}
+
+export interface ProductReview {
+  id: string
+  order_id: string
+  video_id: string
+  buyer_id: string
+  rating: number
+  comment: string
+  created_at: string
+  buyer?: Profile | null
 }
 
 export interface VideoWithProfile extends Video {
@@ -49,6 +63,16 @@ export interface Comment {
   profiles: Profile | null
 }
 
+export interface ProductVariant {
+  id: string
+  video_id: string
+  variant_type: 'size' | 'color'
+  option_name: string
+  option_hex: string | null
+  stock: number
+  sort_order: number
+}
+
 export interface Order {
   id: string
   order_code: string
@@ -60,18 +84,28 @@ export interface Order {
   province: string
   address: string
   total_price: number
+  selected_size: string | null
+  shared_location: string | null
+  selected_color: string | null
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
-  selected_size: string
-  selected_color: string
   created_at: string
   videos?: Video | null
+}
+
+export interface Report {
+  id: string
+  reporter_id: string
+  video_id: string
+  reason: string
+  status: 'pending' | 'reviewed' | 'actioned'
+  created_at: string
 }
 
 export interface Notification {
   id: string
   user_id: string
   actor_id: string | null
-  type: 'like' | 'comment' | 'follow' | 'order' | 'system'
+  type: 'like' | 'comment' | 'follow' | 'order' | 'system' | 'message'
   video_id: string | null
   text: string
   is_read: boolean
@@ -83,18 +117,18 @@ export interface Conversation {
   id: string
   user_a: string
   user_b: string
+  last_message: string
   last_message_at: string
   created_at: string
-  other_user?: Profile | null
-  last_message?: Message | null
-  unread_count?: number
+  otherUser?: Profile | null
+  unreadCount?: number
 }
 
 export interface Message {
   id: string
   conversation_id: string
   sender_id: string
-  text: string
+  content: string
   is_read: boolean
   created_at: string
 }

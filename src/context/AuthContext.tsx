@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null
   profile: Profile | null
   loading: boolean
-  signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: string | null }>
+  signUp: (email: string, password: string, username: string, fullName: string) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -71,14 +71,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { username, full_name: fullName },
-        emailRedirectTo: window.location.origin,
       },
     })
-    if (error) return { error: error.message }
+    if (error) return { error: error.message, needsEmailConfirmation: false }
+
+    // إذا كان مشروع Supabase يفرض تأكيد البريد الإلكتروني، فـ signUp ينشئ
+    // المستخدم لكن بدون جلسة نشطة (data.session = null) حتى يؤكّد بريده.
+    // بدون هذا التحقق، كانت الواجهة تحوّل المستخدم لصفحة الفيديوهات وهو
+    // غير مسجّل دخول فعلياً، فتبدو الصفحة عالقة/معطّلة بلا أي تفسير.
+    if (!data.session) {
+      return { error: null, needsEmailConfirmation: true }
+    }
+
     if (data.user) {
       await loadProfile(data.user.id)
     }
-    return { error: null }
+    return { error: null, needsEmailConfirmation: false }
   }
 
   const signIn = async (email: string, password: string) => {

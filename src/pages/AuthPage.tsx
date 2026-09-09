@@ -14,6 +14,14 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
+
+  const translateAuthError = (error: string) => {
+    if (error === 'User already registered') return 'هذا البريد مسجل بالفعل'
+    if (error === 'Invalid login credentials') return 'البريد أو كلمة المرور غير صحيحة'
+    if (error === 'Email not confirmed') return 'لم تؤكّد بريدك الإلكتروني بعد. تحقق من صندوق الوارد (وصندوق الرسائل غير المرغوبة) واضغط رابط التأكيد أولاً'
+    return error
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -26,9 +34,16 @@ export default function AuthPage() {
         setLoading(false)
         return
       }
-      const { error } = await signUp(email, password, username.trim(), fullName.trim())
+      const { error, needsEmailConfirmation } = await signUp(email, password, username.trim(), fullName.trim())
       if (error) {
-        setError(error === 'User already registered' ? 'هذا البريد مسجل بالفعل' : error)
+        setError(translateAuthError(error))
+        setLoading(false)
+        return
+      }
+      if (needsEmailConfirmation) {
+        // مهم: لا يوجد جلسة نشطة بعد، فلا ننتقل لصفحة الفيديوهات وكأن
+        // الدخول تم، بل نعرض رسالة واضحة تخبر المستخدم بالضبط ماذا ينتظر
+        setAwaitingConfirmation(true)
         setLoading(false)
         return
       }
@@ -36,13 +51,33 @@ export default function AuthPage() {
     } else {
       const { error } = await signIn(email, password)
       if (error) {
-        setError(error === 'Invalid login credentials' ? 'البريد أو كلمة المرور غير صحيحة' : error)
+        setError(translateAuthError(error))
         setLoading(false)
         return
       }
       navigate('/feed')
     }
     setLoading(false)
+  }
+
+  if (awaitingConfirmation) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-emerald-500/15 rounded-2xl flex items-center justify-center mb-5">
+          <Mail className="w-8 h-8 text-emerald-400" />
+        </div>
+        <h1 className="text-lg font-black mb-2">تحقق من بريدك الإلكتروني 📩</h1>
+        <p className="text-sm text-slate-400 max-w-xs leading-relaxed mb-6">
+          أرسلنا رابط تأكيد إلى <b className="text-white">{email}</b>. افتح بريدك واضغط الرابط لتفعيل حسابك، ثم عد وسجّل دخولك من هنا.
+        </p>
+        <button
+          onClick={() => { setAwaitingConfirmation(false); setMode('signin') }}
+          className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold transition"
+        >
+          العودة لتسجيل الدخول
+        </button>
+      </div>
+    )
   }
 
   return (

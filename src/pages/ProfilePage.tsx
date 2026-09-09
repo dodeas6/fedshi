@@ -29,6 +29,12 @@ export default function ProfilePage() {
     loadData()
   }, [user])
 
+  const deleteVideo = async (videoId: string) => {
+    if (!window.confirm('حذف هذا المنشور نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) return
+    const { error } = await supabase.from('videos').delete().eq('id', videoId)
+    if (!error) setVideos(prev => prev.filter(v => v.id !== videoId))
+  }
+
   const loadData = async () => {
     if (!user) return
     setLoading(true)
@@ -109,7 +115,11 @@ export default function ProfilePage() {
           <span className="text-base font-black">@{profile.username}</span>
           <div className="flex gap-3">
             {isAdmin && (
-              <button onClick={() => navigate('/admin')} className="text-slate-400 text-sm font-bold hover:text-white">
+              <button
+                onClick={() => navigate('/admin')}
+                className="text-slate-400 text-sm font-bold hover:text-white"
+                aria-label="لوحة الإدارة"
+              >
                 <Settings className="w-5 h-5" />
               </button>
             )}
@@ -129,7 +139,7 @@ export default function ProfilePage() {
             />
           </div>
           <div>
-            <h1 className="text-xl font-black flex items-center justify-center gap-1.5">
+            <h1 className="text-base font-black flex items-center justify-center gap-1.5">
               {profile.full_name || profile.username}
               {profile.is_verified && <CheckCircle2 className="w-5 h-5 text-cyan-400 fill-cyan-400/30" />}
             </h1>
@@ -146,19 +156,19 @@ export default function ProfilePage() {
         {/* Stats */}
         <div className="flex justify-around bg-slate-900/60 p-4 rounded-2xl text-sm text-center border border-slate-800">
           <div>
-            <b className="text-white text-lg block">{following}</b>
+            <b className="text-white text-sm block">{following}</b>
             <span className="text-slate-400 text-[11px] font-bold">مُتابَع</span>
           </div>
           <div>
-            <b className="text-white text-lg block">{followers}</b>
+            <b className="text-white text-sm block">{followers}</b>
             <span className="text-slate-400 text-[11px] font-bold">متابِع</span>
           </div>
           <div>
-            <b className="text-white text-lg block">{totalLikes}</b>
+            <b className="text-white text-sm block">{totalLikes}</b>
             <span className="text-slate-400 text-[11px] font-bold">إعجاب</span>
           </div>
           <div>
-            <b className="text-amber-400 text-lg block">{profile.coins}</b>
+            <b className="text-amber-400 text-sm block">{profile.coins}</b>
             <span className="text-amber-400/70 text-[11px] font-bold">عملات</span>
           </div>
         </div>
@@ -285,6 +295,15 @@ export default function ProfilePage() {
                       {v.price > 0 ? `${v.price.toLocaleString('ar')}` : ''}
                     </span>
                   </div>
+                  {tab === 'videos' && (
+                    <button
+                      onClick={() => deleteVideo(v.id)}
+                      className="absolute top-1 right-1 w-5 h-5 bg-brand-600/90 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                      title="حذف المنشور"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

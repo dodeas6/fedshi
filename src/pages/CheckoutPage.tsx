@@ -1,9 +1,9 @@
 import { useEffect, useState, FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ShoppingCart, CheckCircle2, ArrowRight, MessageCircle } from 'lucide-react'
+import { ShoppingCart, CheckCircle2, ArrowRight, Star, MapPin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import type { Video } from '../lib/types'
+import type { Video, ProductVariant, ProductReview } from '../lib/types'
 
 const PROVINCES = [
   'بغداد', 'البصرة', 'أربيل', 'الموصل', 'النجف', 'كربلاء', 'كركوك',
@@ -11,24 +11,60 @@ const PROVINCES = [
   'واسط', 'بابل', 'القادسية', 'سليمانية', 'دهوك',
 ]
 
-const SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL']
-
 export default function CheckoutPage() {
   const { videoId } = useParams<{ videoId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
   const [video, setVideo] = useState<Video | null>(null)
+  const [sizes, setSizes] = useState<ProductVariant[]>([])
+  const [colors, setColors] = useState<ProductVariant[]>([])
+  const [reviews, setReviews] = useState<ProductReview[]>([])
+  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [selectedColor, setSelectedColor] = useState<string | null>(null)
+  const [variantNotice, setVariantNotice] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [province, setProvince] = useState('')
   const [address, setAddress] = useState('')
-  const [selectedSize, setSelectedSize] = useState('')
-  const [selectedColor, setSelectedColor] = useState('')
+  const [sharedLocation, setSharedLocation] = useState('')
+
+  const shareMyLocation = () => {
+    if (!navigator.geolocation) {
+      setSubmitError('متصفحك لا يدعم مشاركة الموقع الجغرافي')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => setSharedLocation(`${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`),
+      () => setSubmitError('تعذّر الوصول لموقعك — تأكد من السماح للمتصفح بذلك')
+    )
+  }
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const [success, setSuccess] = useState(false)
   const [orderCode, setOrderCode] = useState('')
-  const [error, setError] = useState('')
+
+  const loadVariants = async (vId: string) => {
+    const { data } = await supabase.from('product_variants').select('*').eq('video_id', vId).order('sort_order')
+    const list = (data as ProductVariant[]) || []
+    setSizes(list.filter(v => v.variant_type === 'size'))
+    setColors(list.filter(v => v.variant_type === 'color'))
+  }
+
+  const loadReviews = async (vId: string) => {
+    const { data } = await supabase
+      .from('product_reviews')
+      .select('*')
+      .eq('video_id', vId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    const list = (data as ProductReview[]) || []
+    if (list.length === 0) { setReviews([]); return }
+    const buyerIds = Array.from(new Set(list.map(r => r.buyer_id)))
+    const { data: buyers } = await supabase.from('profiles').select('*').in('id', buyerIds)
+    const buyerMap = new Map((buyers || []).map((b: any) => [b.id, b]))
+    setReviews(list.map(r => ({ ...r, buyer: buyerMap.get(r.buyer_id) || null })))
+  }
 
   useEffect(() => {
     if (!videoId) return
@@ -40,6 +76,8 @@ export default function CheckoutPage() {
       .then(({ data }) => {
         if (data) {
           setVideo(data as Video)
+          loadVariants((data as Video).id)
+          loadReviews((data as Video).id)
           if (user) {
             supabase
               .from('profiles')
@@ -55,40 +93,59 @@ export default function CheckoutPage() {
       })
   }, [videoId, user])
 
+  useEffect(() => {
+    if (!variantNotice) return
+    const t = setTimeout(() => setVariantNotice(''), 3500)
+    return () => clearTimeout(t)
+  }, [variantNotice])
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!video || !user) return
-    setSubmitting(true)
-    setError('')
 
-    const { data, error: rpcError } = await supabase.rpc('create_order', {
-      p_video_id: video.id,
-      p_buyer_name: name,
-      p_phone: phone,
-      p_province: province,
-      p_address: `${province} - ${address}`,
-      p_selected_size: selectedSize,
-      p_selected_color: selectedColor,
+    if (sizes.length > 0 && !selectedSize) {
+      setSubmitError('الرجاء اختيار القياس')
+      return
+    }
+    if (colors.length > 0 && !selectedColor) {
+      setSubmitError('الرجاء اختيار اللون')
+      return
+    }
+
+    setSubmitError('')
+    setSubmitting(true)
+
+    const code = `FED-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+
+    const { error } = await supabase.from('orders').insert({
+      order_code: code,
+      video_id: video.id,
+      merchant_id: video.user_id,
+      buyer_id: user.id,
+      buyer_name: name,
+      phone: phone,
+      province: province,
+      address: `${province} - ${address}`,
+      total_price: video.price,
+      selected_size: selectedSize,
+      selected_color: selectedColor,
+      shared_location: sharedLocation || null,
+      status: 'pending',
     })
 
     setSubmitting(false)
-    if (rpcError) {
-      setError(rpcError.message.includes('suspended') ? 'حسابك موقوف. تواصل مع الدعم.' : 'تعذّر إنشاء الطلب. حاول مرة أخرى.')
+    if (error) {
+      console.error('Order error:', error)
+      if (error.message?.includes('نفذت الكمية')) {
+        setSubmitError(error.message)
+        loadVariants(video.id) // حدّث الكميات المعروضة فوراً لأن أحدهم اشترى القطعة الأخيرة للتو
+      } else {
+        setSubmitError('تعذّر إتمام الطلب، حاول مرة أخرى')
+      }
       return
     }
-    const { data: orderData } = await supabase
-      .from('orders')
-      .select('order_code')
-      .eq('id', data as string)
-      .maybeSingle()
-    if (orderData?.order_code) setOrderCode(orderData.order_code)
+    setOrderCode(code)
     setSuccess(true)
-  }
-
-  const handleMessage = async () => {
-    if (!video || !user) return
-    const { data } = await supabase.rpc('start_conversation', { p_other_user_id: video.user_id })
-    if (data) navigate(`/messages/${data}`)
   }
 
   if (loading) {
@@ -104,7 +161,9 @@ export default function CheckoutPage() {
       <div className="flex items-center justify-center min-h-screen bg-black text-white text-center p-6">
         <div>
           <p className="text-sm text-slate-400 mb-4">المنتج غير موجود</p>
-          <button onClick={() => navigate('/feed')} className="px-6 py-3 bg-slate-800 rounded-xl text-sm font-bold">العودة</button>
+          <button onClick={() => navigate('/feed')} className="px-6 py-3 bg-slate-800 rounded-xl text-sm font-bold">
+            العودة
+          </button>
         </div>
       </div>
     )
@@ -124,10 +183,10 @@ export default function CheckoutPage() {
             <b className="text-emerald-400 text-lg block mt-1">{orderCode}</b>
             <span className="text-xs block mt-3">سيتواصل معك التاجر قريباً لتأكيد الشحن.</span>
           </p>
-          <button onClick={() => navigate(`/track/${orderCode}`)} className="w-full py-3.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-sm font-bold transition mb-2">
-            تتبع الطلب الآن
-          </button>
-          <button onClick={() => navigate('/feed')} className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold transition">
+          <button
+            onClick={() => navigate('/feed')}
+            className="w-full py-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold transition"
+          >
             العودة للريلز
           </button>
         </div>
@@ -135,13 +194,10 @@ export default function CheckoutPage() {
     )
   }
 
-  const hasSizes = video.sizes && video.sizes.length > 0
-  const hasColors = video.colors && video.colors.length > 0
-
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center p-4 relative overflow-hidden pb-20">
+    <div className="min-h-screen bg-black text-white flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-600/10 rounded-full blur-[80px]" />
-      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-6 rounded-3xl w-full max-w-md space-y-5 shadow-2xl relative z-10">
+      <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl w-full max-w-md space-y-6 shadow-2xl relative z-10">
         <div className="text-center space-y-2">
           <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto">
             <ShoppingCart className="w-7 h-7 text-emerald-400" />
@@ -155,55 +211,97 @@ export default function CheckoutPage() {
             <span className="text-xs text-slate-400">المنتج:</span>
             <span className="text-sm font-bold text-white truncate max-w-[60%]">{video.title}</span>
           </div>
+          {video.reviews_count > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-slate-400">التقييم:</span>
+              <span className="flex items-center gap-1 text-xs font-bold text-amber-400">
+                <Star className="w-3.5 h-3.5 fill-amber-400" />
+                {video.avg_rating} ({video.reviews_count} تقييم)
+              </span>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-sm font-bold text-slate-300">المبلغ الإجمالي:</span>
             <span className="text-lg font-black text-amber-400">{video.price.toLocaleString('ar')} د.ع</span>
           </div>
         </div>
 
-        {/* Size selector */}
-        {hasSizes && (
+        {sizes.length > 0 && (
           <div>
-            <label className="block text-xs font-bold text-slate-400 mb-2">اختر القياس</label>
+            <p className="text-xs font-bold text-slate-400 mb-2">اختر القياس:</p>
             <div className="flex flex-wrap gap-2">
-              {video.sizes.map(s => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSelectedSize(s)}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition ${
-                    selectedSize === s
-                      ? 'bg-emerald-600 text-white border-emerald-500'
-                      : 'bg-black/40 text-slate-300 border-slate-700 hover:border-emerald-600/50'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+              {sizes.map(s => {
+                const soldOut = s.stock <= 0
+                const active = selectedSize === s.option_name
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      if (soldOut) { setVariantNotice(`نفذت الكمية لقياس ${s.option_name} 😔`); return }
+                      setSelectedSize(s.option_name)
+                      setSubmitError('')
+                    }}
+                    className={`px-4 py-2 rounded-lg text-xs font-black border transition ${
+                      soldOut
+                        ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-500'
+                        : active
+                        ? 'border-emerald-500 bg-emerald-500/20 text-white'
+                        : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    {s.option_name}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* Color selector */}
-        {hasColors && (
+        {colors.length > 0 && (
           <div>
-            <label className="block text-xs font-bold text-slate-400 mb-2">اختر اللون</label>
+            <p className="text-xs font-bold text-slate-400 mb-2">اختر اللون:</p>
             <div className="flex flex-wrap gap-2">
-              {video.colors.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setSelectedColor(c)}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition ${
-                    selectedColor === c
-                      ? 'bg-emerald-600 text-white border-emerald-500'
-                      : 'bg-black/40 text-slate-300 border-slate-700 hover:border-emerald-600/50'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
+              {colors.map(c => {
+                const soldOut = c.stock <= 0
+                const active = selectedColor === c.option_name
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      if (soldOut) { setVariantNotice(`نفذت الكمية للون ${c.option_name} 😔`); return }
+                      setSelectedColor(c.option_name)
+                      setSubmitError('')
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold border transition ${
+                      soldOut
+                        ? 'opacity-30 cursor-not-allowed border-slate-800 text-slate-500'
+                        : active
+                        ? 'border-emerald-500 bg-emerald-500/20 text-white'
+                        : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    {c.option_hex && (
+                      <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ background: c.option_hex }} />
+                    )}
+                    {c.option_name}
+                  </button>
+                )
+              })}
             </div>
+          </div>
+        )}
+
+        {variantNotice && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-3 rounded-xl text-center">
+            {variantNotice}
+          </div>
+        )}
+
+        {submitError && (
+          <div className="bg-brand-600/15 border border-brand-600/30 text-brand-400 text-xs font-bold py-2.5 px-3 rounded-xl text-center">
+            {submitError}
           </div>
         )}
 
@@ -241,11 +339,24 @@ export default function CheckoutPage() {
             required
             className="w-full px-4 py-3.5 bg-black/50 border border-slate-700 focus:border-emerald-500 rounded-xl text-sm text-white focus:outline-none transition resize-none"
           />
-          {error && (
-            <div className="bg-brand-600/15 border border-brand-600/30 text-brand-400 text-xs font-bold py-2.5 px-4 rounded-xl">
-              {error}
+
+          {sharedLocation ? (
+            <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5">
+              <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" /> تم إرفاق موقعك مع الطلب
+              </span>
+              <button type="button" onClick={() => setSharedLocation('')} className="text-slate-500 text-xs">إزالة</button>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={shareMyLocation}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 border border-dashed border-slate-700 rounded-xl text-[11px] font-bold text-slate-400 hover:border-emerald-500 hover:text-emerald-400 transition"
+            >
+              <MapPin className="w-3.5 h-3.5" /> مشاركة موقعي الجغرافي مع التاجر (اختياري)
+            </button>
           )}
+
           <button
             type="submit"
             disabled={submitting}
@@ -256,20 +367,33 @@ export default function CheckoutPage() {
         </form>
 
         <button
-          onClick={handleMessage}
-          className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold text-cyan-400 transition flex items-center justify-center gap-2"
-        >
-          <MessageCircle className="w-4 h-4" />
-          راسل التاجر
-        </button>
-
-        <button
           onClick={() => navigate('/feed')}
           className="w-full text-center text-xs font-bold text-slate-500 hover:text-white transition flex items-center justify-center gap-1"
         >
           <ArrowRight className="w-4 h-4" />
           إلغاء والعودة للريلز
         </button>
+
+        {reviews.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-slate-800">
+            <p className="text-xs font-bold text-slate-400">آراء المشترين ({reviews.length})</p>
+            <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
+              {reviews.map(r => (
+                <div key={r.id} className="bg-black/30 p-3 rounded-xl">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-slate-300">@{r.buyer?.username || 'مشتري'}</span>
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <Star key={n} className={`w-3 h-3 ${n <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'}`} />
+                      ))}
+                    </div>
+                  </div>
+                  {r.comment && <p className="text-[11px] text-slate-400">{r.comment}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -1,13 +1,38 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Search, Plus, Inbox, User } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
 
 export default function BottomNav() {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [hasUnread, setHasUnread] = useState(false)
 
-  const hiddenRoutes = ['/auth', '/checkout', '/upload', '/track']
+  useEffect(() => {
+    if (!user) { setHasUnread(false); return }
+
+    const checkUnread = async () => {
+      const [{ count: unreadMsgs }, { count: unreadNotifs }] = await Promise.all([
+        supabase.from('messages').select('id', { count: 'exact', head: true }).eq('is_read', false).neq('sender_id', user.id),
+        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_read', false),
+      ])
+      setHasUnread((unreadMsgs ?? 0) > 0 || (unreadNotifs ?? 0) > 0)
+    }
+
+    checkUnread()
+
+    const channel = supabase
+      .channel('bottomnav-unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, checkUnread)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, checkUnread)
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user])
+
+  const hiddenRoutes = ['/auth', '/checkout', '/upload', '/track', '/inbox/', '/admin']
   if (hiddenRoutes.some(r => location.pathname.startsWith(r))) return null
 
   const navItems = [
@@ -44,7 +69,12 @@ export default function BottomNav() {
               <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
             </div>
           ) : (
-            <Icon className="w-6 h-6" strokeWidth={2} />
+            <div className="relative">
+              <Icon className="w-6 h-6" strokeWidth={2} />
+              {to === '/inbox' && hasUnread && (
+                <span className="absolute -top-0.5 -left-0.5 w-2.5 h-2.5 bg-brand-600 rounded-full border-2 border-black" />
+              )}
+            </div>
           )}
           <span>{label}</span>
         </NavLink>

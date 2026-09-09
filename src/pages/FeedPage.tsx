@@ -21,7 +21,6 @@ export default function FeedPage() {
   const fetchVideos = useCallback(async (page: number) => {
     const offset = page * PAGE_SIZE
 
-    // Order by engagement_score (TikTok-style recommendation), with some randomness for variety
     const { data, error } = await supabase
       .from('videos')
       .select('*, profiles!videos_user_id_fkey(*)')
@@ -60,6 +59,15 @@ export default function FeedPage() {
     })) as VideoWithProfile[]
   }, [user])
 
+  const hasMoreRef = useRef(hasMore)
+  const loadingRef = useRef(loading)
+  const videosLenRef = useRef(0)
+  const activeIndexRef = useRef(0)
+
+  useEffect(() => { hasMoreRef.current = hasMore }, [hasMore])
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => { videosLenRef.current = videos.length }, [videos.length])
+
   useEffect(() => {
     (async () => {
       setLoading(true)
@@ -70,47 +78,50 @@ export default function FeedPage() {
     })()
   }, [fetchVideos])
 
+  // الإصلاح الجذري: بدل الاعتماد على IntersectionObserver (الذي أثبت عدم
+  // موثوقيته مع بعض أنماط التمرير)، نحسب الفيديو الظاهر حالياً مباشرة
+  // ومباشرةً من موضع التمرير (scrollTop) نفسه — طريقة أبسط، لا تعتمد على
+  // عتبات (thresholds) قد لا تتحقق أبداً، وتعمل بشكل حتمي 100%
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    let currentActive = activeIndex
+    let ticking = false
 
-    const observer = new IntersectionObserver(
-      entries => {
-        // Find the entry with the highest intersection ratio
-        let bestIdx = -1
-        let bestRatio = 0
-        entries.forEach(entry => {
-          if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
-            const idx = Number((entry.target as HTMLElement).getAttribute('data-index'))
-            bestRatio = entry.intersectionRatio
-            bestIdx = idx
+    const updateActiveFromScroll = () => {
+      ticking = false
+      const idx = Math.round(container.scrollTop / container.clientHeight)
+      const clamped = Math.max(0, Math.min(idx, videosLenRef.current - 1))
+
+      if (clamped !== activeIndexRef.current) {
+        activeIndexRef.current = clamped
+        setActiveIndex(clamped)
+      }
+
+      if (clamped >= videosLenRef.current - 3 && hasMoreRef.current && !loadingRef.current) {
+        pageRef.current += 1
+        fetchVideos(pageRef.current).then(newVideos => {
+          if (newVideos.length > 0) {
+            setVideos(prev => [...prev, ...newVideos])
+            newVideos.forEach(v => seenIdsRef.current.add(v.id))
           }
         })
+      }
+    }
 
-        if (bestIdx >= 0 && bestIdx !== currentActive) {
-          currentActive = bestIdx
-          setActiveIndex(bestIdx)
-          if (bestIdx >= videos.length - 3 && hasMore && !loading) {
-            pageRef.current += 1
-            fetchVideos(pageRef.current).then(newVideos => {
-              if (newVideos.length > 0) {
-                setVideos(prev => [...prev, ...newVideos])
-                newVideos.forEach(v => seenIdsRef.current.add(v.id))
-              }
-            })
-          }
-        }
-      },
-      { root: container, threshold: [0.5, 0.6, 0.75, 0.9] }
-    )
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(updateActiveFromScroll)
+    }
 
-    const cards = container.querySelectorAll('[data-index]')
-    cards.forEach(card => observer.observe(card))
+    // تحقّق فوري عند التحميل الأول أيضاً (بدون انتظار أول حدث تمرير)
+    updateActiveFromScroll()
 
-    return () => observer.disconnect()
-  }, [videos, hasMore, loading, fetchVideos])
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => container.removeEventListener('scroll', onScroll)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos.length > 0])
 
   if (loading) {
     return (
@@ -152,7 +163,7 @@ export default function FeedPage() {
       className="snap-container w-full h-screen overflow-y-scroll no-scrollbar"
     >
       {videos.map((v, i) => (
-        <div key={v.id} data-index={i} className="snap-item w-full h-screen relative">
+        <div key={v.id} className="w-full h-screen relative snap-item">
           <ReelItem video={v} isActive={i === activeIndex} />
         </div>
       ))}

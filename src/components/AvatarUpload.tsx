@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { uploadFileResumable } from '../lib/uploadHelper'
 import { useAuth } from '../context/AuthContext'
 
 interface Props {
@@ -15,22 +16,47 @@ export default function AvatarUpload({ currentAvatar, username, onUploaded }: Pr
   const cameraRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
+  const [error, setError] = useState('')
 
   const avatar = currentAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${username}`
 
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(''), 4000)
+    return () => clearTimeout(t)
+  }, [error])
+
+  const MAX_AVATAR_MB = 8
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
   const uploadFile = async (file: File) => {
     if (!user) return
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setError('صيغة الصورة غير مدعومة. استخدم JPG أو PNG أو WEBP')
+      setShowPicker(false)
+      return
+    }
+    if (file.size > MAX_AVATAR_MB * 1024 * 1024) {
+      setError(`حجم الصورة كبير جداً. الحد الأقصى ${MAX_AVATAR_MB} ميجابايت`)
+      setShowPicker(false)
+      return
+    }
+
+    setError('')
     setUploading(true)
     setShowPicker(false)
     try {
       const ext = file.name.split('.').pop() || 'jpg'
       const fileName = `${user.id}/avatar-${Date.now()}.${ext}`
-      await supabase.storage.from('videos').upload(fileName, file, { contentType: file.type })
+      const { error: uploadError } = await uploadFileResumable('videos', fileName, file).then(() => ({ error: null })).catch(e => ({ error: e }))
+      if (uploadError) throw new Error(uploadError.message || 'فشل رفع الصورة')
       const { data: urlData } = supabase.storage.from('videos').getPublicUrl(fileName)
       await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', user.id)
       onUploaded(urlData.publicUrl)
     } catch (err) {
       console.error('Avatar upload error:', err)
+      setError('تعذّر رفع الصورة، حاول مرة أخرى')
     }
     setUploading(false)
   }
@@ -53,6 +79,12 @@ export default function AvatarUpload({ currentAvatar, username, onUploaded }: Pr
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[81] bg-brand-600 text-white text-[11px] font-bold px-3 py-2 rounded-xl shadow-xl whitespace-nowrap">
+          {error}
+        </div>
+      )}
 
       {showPicker && !uploading && (
         <>
