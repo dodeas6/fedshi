@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Search, Package, ArrowRight, Clock, CheckCircle2, Truck, XCircle, MapPin, Phone, User } from 'lucide-react'
+import { Search, Package, ArrowRight, Clock, CheckCircle2, Truck, XCircle, MapPin, Phone, User, MessageCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Order } from '../lib/types'
@@ -20,6 +20,18 @@ export default function OrderTrackingPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
+
+  const messageMerchant = async () => {
+    if (!user || !order) { navigate('/auth'); return }
+    setActionError('')
+    const { data, error } = await supabase.rpc('get_or_create_conversation', { other_user: order.merchant_id })
+    if (error) {
+      setActionError(error.message?.includes('نفسك') ? 'هذا حسابك أنت — لا يمكنك مراسلة نفسك' : 'تعذّر فتح المحادثة، حاول مرة أخرى')
+      return
+    }
+    if (data) navigate(`/inbox/${data}`)
+  }
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault()
@@ -159,14 +171,28 @@ export default function OrderTrackingPage() {
               </div>
             </div>
 
-            {user && (
-              <button
-                onClick={() => navigate('/orders')}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold text-slate-300 transition"
-              >
-                عرض كل طلباتي
-              </button>
+            {actionError && (
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold py-2.5 px-4 rounded-xl text-center">
+                {actionError}
+              </div>
             )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={messageMerchant}
+                className="flex-1 py-3 bg-brand-600/15 border border-brand-600/30 hover:bg-brand-600/25 rounded-xl text-sm font-bold text-brand-400 transition flex items-center justify-center gap-1.5"
+              >
+                <MessageCircle className="w-4 h-4" /> راسل التاجر
+              </button>
+              {user && (
+                <button
+                  onClick={() => navigate('/orders')}
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold text-slate-300 transition"
+                >
+                  عرض كل طلباتي
+                </button>
+              )}
+            </div>
           </div>
         )}
 

@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { TrendingUp, Mail, Lock, User as UserIcon, AtSign, Eye, EyeOff } from 'lucide-react'
 
 export default function AuthPage() {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, requestPasswordReset } = useAuth()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -15,6 +15,7 @@ export default function AuthPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
+  const [resetEmailSent, setResetEmailSent] = useState(false)
 
   const translateAuthError = (error: string) => {
     if (error === 'User already registered') return 'هذا البريد مسجل بالفعل'
@@ -27,6 +28,17 @@ export default function AuthPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+
+    if (mode === 'forgot') {
+      const { error } = await requestPasswordReset(email)
+      setLoading(false)
+      if (error) {
+        setError('تعذّر إرسال رابط الاستعادة، تأكد من صحة البريد وحاول مرة أخرى')
+        return
+      }
+      setResetEmailSent(true)
+      return
+    }
 
     if (mode === 'signup') {
       if (username.trim().length < 3) {
@@ -58,6 +70,26 @@ export default function AuthPage() {
       navigate('/feed')
     }
     setLoading(false)
+  }
+
+  if (resetEmailSent) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 bg-emerald-500/15 rounded-2xl flex items-center justify-center mb-5">
+          <Mail className="w-8 h-8 text-emerald-400" />
+        </div>
+        <h1 className="text-lg font-black mb-2">تحقق من بريدك الإلكتروني 📩</h1>
+        <p className="text-sm text-slate-400 max-w-xs leading-relaxed mb-6">
+          أرسلنا رابطاً لإعادة تعيين كلمة المرور إلى <b className="text-white">{email}</b>. افتح بريدك واضغط الرابط لتعيين كلمة مرور جديدة.
+        </p>
+        <button
+          onClick={() => { setResetEmailSent(false); setMode('signin') }}
+          className="px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-bold transition"
+        >
+          العودة لتسجيل الدخول
+        </button>
+      </div>
+    )
   }
 
   if (awaitingConfirmation) {
@@ -92,10 +124,11 @@ export default function AuthPage() {
             <h1 className="text-3xl font-black tracking-tight">فدشي</h1>
           </div>
           <p className="text-xs text-slate-400 font-bold">
-            {mode === 'signin' ? 'سجّل دخولك للمتابعة' : 'أنشئ حسابك وابدأ التسوّق'}
+            {mode === 'signin' ? 'سجّل دخولك للمتابعة' : mode === 'signup' ? 'أنشئ حسابك وابدأ التسوّق' : 'أدخل بريدك لاستعادة كلمة المرور'}
           </p>
         </div>
 
+        {mode !== 'forgot' && (
         <div className="flex bg-slate-900 rounded-2xl p-1">
           <button
             onClick={() => { setMode('signin'); setError('') }}
@@ -114,6 +147,7 @@ export default function AuthPage() {
             حساب جديد
           </button>
         </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
           {mode === 'signup' && (
@@ -154,6 +188,7 @@ export default function AuthPage() {
             />
           </div>
 
+          {mode !== 'forgot' && (
           <div className="relative">
             <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
             <input
@@ -173,6 +208,17 @@ export default function AuthPage() {
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
+          )}
+
+          {mode === 'signin' && (
+            <button
+              type="button"
+              onClick={() => { setMode('forgot'); setError('') }}
+              className="text-[11px] text-slate-500 hover:text-brand-400 font-bold block mr-1"
+            >
+              نسيت كلمة المرور؟
+            </button>
+          )}
 
           {error && (
             <div className="bg-brand-600/15 border border-brand-600/30 text-brand-400 text-xs font-bold py-2.5 px-4 rounded-xl">
@@ -185,8 +231,18 @@ export default function AuthPage() {
             disabled={loading}
             className="w-full py-3.5 bg-gradient-to-r from-brand-600 to-accent-500 hover:opacity-90 disabled:opacity-50 rounded-xl text-sm font-black text-white shadow-lg shadow-brand-500/30 transition active:scale-95"
           >
-            {loading ? 'جارٍ المعالجة...' : mode === 'signin' ? 'تسجيل الدخول' : 'إنشاء الحساب'}
+            {loading ? 'جارٍ المعالجة...' : mode === 'signin' ? 'تسجيل الدخول' : mode === 'signup' ? 'إنشاء الحساب' : 'إرسال رابط الاستعادة'}
           </button>
+
+          {mode === 'forgot' && (
+            <button
+              type="button"
+              onClick={() => { setMode('signin'); setError('') }}
+              className="w-full text-center text-xs font-bold text-slate-500 hover:text-white transition"
+            >
+              العودة لتسجيل الدخول
+            </button>
+          )}
         </form>
 
         <p className="text-center text-[10px] text-slate-600 leading-relaxed">

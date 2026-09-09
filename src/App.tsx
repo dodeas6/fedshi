@@ -14,6 +14,7 @@ import BuyerOrdersPage from './pages/BuyerOrdersPage'
 import AdminPage from './pages/AdminPage'
 import ChatThreadPage from './pages/ChatThreadPage'
 import PublicProfilePage from './pages/PublicProfilePage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
         <Route path="/inbox/:conversationId" element={<ProtectedRoute><ChatThreadPage /></ProtectedRoute>} />
         <Route path="/u/:userId" element={<PublicProfilePage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="*" element={<Navigate to="/feed" replace />} />
       </Routes>
       <BottomNav />
