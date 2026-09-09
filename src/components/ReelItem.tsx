@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, Share2, Bookmark, Plus, Music, CheckCircle2, ShoppingCart, Flag, Send, Volume2, VolumeX } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { getInitialMuted, saveMutedPreference } from '../lib/soundPreference'
+import { useSound } from '../lib/SoundContext'
 import { useAuth } from '../context/AuthContext'
 import type { VideoWithProfile } from '../lib/types'
 import CommentSheet from './CommentSheet'
@@ -17,7 +17,7 @@ export default function ReelItem({ video, isActive }: ReelItemProps) {
   const { user, profile, refreshProfile } = useAuth()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [isMuted, setIsMuted] = useState(getInitialMuted)
+  const { isMuted, setMuted: setIsMuted } = useSound()
   const [liked, setLiked] = useState(video.is_liked ?? false)
   const [likeCount, setLikeCount] = useState(video.likes_count)
   const [saved, setSaved] = useState(video.is_saved ?? false)
@@ -89,7 +89,6 @@ export default function ReelItem({ video, isActive }: ReelItemProps) {
     const next = !isMuted
     v.muted = next
     setIsMuted(next)
-    saveMutedPreference(next)
   }
 
   useEffect(() => {
@@ -231,13 +230,22 @@ export default function ReelItem({ video, isActive }: ReelItemProps) {
         </div>
       )}
 
-      <button
-        onClick={toggleMute}
-        className="absolute top-4 left-4 z-[6] w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
-        aria-label={isMuted ? 'تفعيل الصوت' : 'كتم الصوت'}
-      >
-        {isMuted ? <VolumeX className="w-4 h-4 text-white" /> : <Volume2 className="w-4 h-4 text-white" />}
-      </button>
+      <div className="absolute top-4 left-4 z-[6] flex items-center gap-2">
+        <button
+          onClick={toggleMute}
+          className={`w-11 h-11 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border-2 transition ${
+            isMuted ? 'border-amber-400 animate-pulseSoft' : 'border-white/20'
+          }`}
+          aria-label={isMuted ? 'تفعيل الصوت' : 'كتم الصوت'}
+        >
+          {isMuted ? <VolumeX className="w-5 h-5 text-amber-400" /> : <Volume2 className="w-5 h-5 text-white" />}
+        </button>
+        {isMuted && isActive && (
+          <span className="bg-amber-400 text-black text-[11px] font-black px-2.5 py-1.5 rounded-full shadow-lg animate-fadeInOut whitespace-nowrap">
+            اضغط للصوت 🔊
+          </span>
+        )}
+      </div>
 
       {conversationError && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[6] bg-brand-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xl max-w-[85%] text-center">

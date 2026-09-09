@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { VideoWithProfile } from '../lib/types'
 import ReelItem from '../components/ReelItem'
+import { SoundProvider } from '../lib/SoundContext'
 
 const PAGE_SIZE = 10
 
@@ -158,15 +159,17 @@ export default function FeedPage() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="snap-container w-full h-screen overflow-y-scroll no-scrollbar"
-    >
-      {videos.map((v, i) => (
-        <div key={v.id} className="w-full h-screen relative snap-item">
-          <ReelItem video={v} isActive={i === activeIndex} />
-        </div>
-      ))}
-    </div>
+    <SoundProvider>
+      <div
+        ref={containerRef}
+        className="snap-container w-full h-screen overflow-y-scroll no-scrollbar"
+      >
+        {videos.map((v, i) => (
+          <div key={v.id} className="w-full h-screen relative snap-item">
+            <ReelItem video={v} isActive={i === activeIndex} />
+          </div>
+        ))}
+      </div>
+    </SoundProvider>
   )
 }
