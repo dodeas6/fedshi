@@ -6,6 +6,7 @@ export interface Profile {
   avatar_url: string
   role: 'viewer' | 'merchant' | 'admin' | 'super_admin'
   is_verified: boolean
+  terms_accepted_at: string | null
   is_private: boolean
   is_banned: boolean
   coins: number

@@ -16,6 +16,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
   const [resetEmailSent, setResetEmailSent] = useState(false)
+  const [agreedTerms, setAgreedTerms] = useState(false)
+  const [agreedResponsibility, setAgreedResponsibility] = useState(false)
 
   const translateAuthError = (error: string) => {
     if (error === 'User already registered') return 'هذا البريد مسجل بالفعل'
@@ -43,6 +45,11 @@ export default function AuthPage() {
     if (mode === 'signup') {
       if (username.trim().length < 3) {
         setError('اسم المستخدم يجب أن يكون 3 أحرف على الأقل')
+        setLoading(false)
+        return
+      }
+      if (!agreedTerms || !agreedResponsibility) {
+        setError('يجب الموافقة على شروط الاستخدام وإقرار المسؤولية قبل إنشاء الحساب')
         setLoading(false)
         return
       }
@@ -220,6 +227,37 @@ export default function AuthPage() {
             </button>
           )}
 
+          {mode === 'signup' && (
+            <div className="space-y-2.5 bg-slate-900/60 border border-slate-800 rounded-xl p-3.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreedTerms}
+                  onChange={e => setAgreedTerms(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-brand-600 shrink-0"
+                />
+                <span className="text-[11px] text-slate-300 leading-relaxed">
+                  قرأت ووافقت على{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-brand-400 underline font-bold">
+                    شروط الاستخدام
+                  </a>
+                  {' '}الخاصة بفدشي
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreedResponsibility}
+                  onChange={e => setAgreedResponsibility(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-brand-600 shrink-0"
+                />
+                <span className="text-[11px] text-slate-300 leading-relaxed">
+                  أتحمّل وحدي كامل المسؤولية القانونية عن أي محتوى أنشره على المنصة، وأقرّ بأن فدشي غير مسؤولة عن أي منشور من مستخدم آخر
+                </span>
+              </label>
+            </div>
+          )}
+
           {error && (
             <div className="bg-brand-600/15 border border-brand-600/30 text-brand-400 text-xs font-bold py-2.5 px-4 rounded-xl">
               {error}
@@ -228,7 +266,7 @@ export default function AuthPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === 'signup' && (!agreedTerms || !agreedResponsibility))}
             className="w-full py-3.5 bg-gradient-to-r from-brand-600 to-accent-500 hover:opacity-90 disabled:opacity-50 rounded-xl text-sm font-black text-white shadow-lg shadow-brand-500/30 transition active:scale-95"
           >
             {loading ? 'جارٍ المعالجة...' : mode === 'signin' ? 'تسجيل الدخول' : mode === 'signup' ? 'إنشاء الحساب' : 'إرسال رابط الاستعادة'}

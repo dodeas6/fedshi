@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
       options: {
-        data: { username, full_name: fullName },
+        data: { username, full_name: fullName, terms_accepted_at: new Date().toISOString() },
       },
     })
     if (error) return { error: error.message, needsEmailConfirmation: false }
